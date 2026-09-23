@@ -41,7 +41,7 @@ uv run python scripts/generate_synthetic_golden.py output/golden.png
 ```
 scripts/
   common.py                      # 共用的圖片讀寫工具（cv2 imread/imwrite）
-  generate_synthetic_golden.py   # 演算法：合成 1920x1080 golden sample（色塊+漸層+圖形，取代 ffmpeg testsrc2）
+  generate_synthetic_golden.py   # 演算法：合成 golden sample（色塊+漸層+圖形，取代 ffmpeg testsrc2），預設 1920x1080，可用 --width/--height 產生任意解析度（如 3840x2160）
   generate_golden_from_video.py  # 演算法：用 cv2.VideoCapture 從影片擷取一幀golden sample
   generate_solid_color.py        # 演算法：產生全黑/全白（或任意純色）圖片
   degrade_gaussian_noise.py      # 演算法：高斯雜訊失真 + 二分搜尋校準到目標 PSNR
@@ -104,10 +104,12 @@ cd psnr_toolkit
 # 1. 產生兩種 golden sample
 uv run python scripts/generate_synthetic_golden.py output/golden.png
 uv run python scripts/generate_golden_from_video.py /path/to/bigbuckbunny.mp4 output_bbb/golden.png --seconds 5
+uv run python scripts/generate_synthetic_golden.py output_4k/golden.png --width 3840 --height 2160
 
 # 2. 一次跑完整條 pipeline（golden + black/white + noise/blur 31張 x2 + metrics.csv）
 uv run python scripts/run_pipeline.py --golden output/golden.png --outdir output
 uv run python scripts/run_pipeline.py --golden output_bbb/golden.png --outdir output_bbb
+uv run python scripts/run_pipeline.py --golden output_4k/golden.png --outdir output_4k --with-vmaf
 
 # 3. 或單獨執行某個演算法
 uv run python scripts/degrade_gaussian_noise.py output/golden.png output/noise --targets 25,20,15
@@ -123,12 +125,14 @@ uv run python scripts/metrics_vmaf.py output/golden.png output/blur/psnr_20.0.pn
 # 6. 基於 golden 產生「模擬真實轉檔損壞」的樣本，並與 golden 比較
 uv run python scripts/generate_transcode_corruptions.py output/golden.png output/broken
 uv run python scripts/compare_broken_samples.py output/golden.png output/broken --with-vmaf
+uv run python scripts/generate_transcode_corruptions.py output_4k/golden.png output_4k/broken
+uv run python scripts/compare_broken_samples.py output_4k/golden.png output_4k/broken --with-vmaf
 
 # 6b. 也可以單獨執行某一種損壞演算法、自訂參數
 uv run python scripts/corrupt_block_glitch.py output/golden.png output/broken/block_glitch.png --corruption-ratio 0.3
 uv run python scripts/corrupt_heavy_compression.py output/golden.png output/broken/heavy_compression.png --quality 1
 
-# 7. 彙整 testsrc + BBB 兩組資料集的 noise/blur/broken 完整結果成一份 REPORT.md
+# 7. 彙整 testsrc + BBB + 4K 三組資料集的 noise/blur/broken 完整結果成一份 REPORT.md（含 1080p vs 4K 解析度比較統計）
 uv run python scripts/build_report.py
 
 # 8.（需系統安裝 ffmpeg）驗證 OpenCV 算出來的 PSNR/SSIM 跟 ffmpeg CLI 算出來的差多少

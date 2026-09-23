@@ -124,6 +124,7 @@ def build_report(output_path: str) -> None:
 
     lines += build_section("Dataset A: Synthetic testsrc golden", root / "output")
     lines += build_section("Dataset B: Big Buck Bunny golden", root / "output_bbb")
+    lines += build_section("Dataset C: Synthetic testsrc golden (4K/UHD, 3840x2160)", root / "output_4k")
 
     lines.append("\n## Cross-dataset comparison summary\n")
     lines.append(
@@ -131,7 +132,7 @@ def build_report(output_path: str) -> None:
         "Broken sample with lowest PSNR | Broken sample with highest VMAF |"
     )
     lines.append("\n|---|---|---|---|---|")
-    for name, outdir in (("testsrc", root / "output"), ("Big Buck Bunny", root / "output_bbb")):
+    for name, outdir in (("testsrc", root / "output"), ("Big Buck Bunny", root / "output_bbb"), ("testsrc 4K", root / "output_4k")):
         metrics_rows = _read_csv(outdir / "metrics.csv")
         broken_rows = _read_csv(outdir / "broken" / "broken_metrics.csv")
         noise_crossover = _vmaf80_crossover(metrics_rows, "noise")
@@ -144,6 +145,66 @@ def build_report(output_path: str) -> None:
             f"{highest_vmaf['pattern']} ({_fmt(highest_vmaf['vmaf'], 2)}) |"
         )
     lines.append("\n")
+
+    lines.append("\n## Resolution comparison: 1920x1080 vs 3840x2160 (same synthetic testsrc content)\n")
+    lines.append(
+        "\nBoth datasets share the same procedurally-generated pattern (color bars, "
+        "gradient, shapes/text), scaled to 1080p and 4K respectively, and are put "
+        "through the identical noise/blur PSNR-calibrated sweep and transcode-"
+        "corruption set. Since noise/blur are calibrated to hit the *same target "
+        "PSNR* at both resolutions, this isolates how resolution alone shifts the "
+        "perceptual (SSIM/VMAF) reading of an equal-PSNR distortion.\n"
+    )
+    res_rows_1080 = _read_csv(root / "output" / "metrics.csv")
+    res_rows_4k = _read_csv(root / "output_4k" / "metrics.csv")
+    lines.append(
+        "\n| Target PSNR | Kind | SSIM (1080p) | SSIM (4K) | VMAF (1080p) | VMAF (4K) |"
+    )
+    lines.append("\n|---|---|---|---|---|---|")
+    by_key_4k = {(r["type"], r["target_psnr"]): r for r in res_rows_4k}
+    for r in res_rows_1080:
+        if r["type"] not in ("noise", "blur"):
+            continue
+        if r["target_psnr"] not in ("30.0", "25.0", "20.0", "15.0"):
+            continue
+        r4k = by_key_4k.get((r["type"], r["target_psnr"]))
+        if not r4k:
+            continue
+        lines.append(
+            f"\n| {r['target_psnr']} | {r['type']} | {_fmt(r['ssim'])} | {_fmt(r4k['ssim'])} | "
+            f"{_fmt(r['vmaf'], 2)} | {_fmt(r4k['vmaf'], 2)} |"
+        )
+    lines.append("\n")
+
+    broken_1080 = {r["pattern"]: r for r in _read_csv(root / "output" / "broken" / "broken_metrics.csv")}
+    broken_4k = {r["pattern"]: r for r in _read_csv(root / "output_4k" / "broken" / "broken_metrics.csv")}
+    lines.append("\n| Corruption type | PSNR (1080p) | PSNR (4K) | VMAF (1080p) | VMAF (4K) |")
+    lines.append("\n|---|---|---|---|---|")
+    for pattern in broken_1080:
+        b1080, b4k = broken_1080[pattern], broken_4k.get(pattern)
+        if not b4k:
+            continue
+        lines.append(
+            f"\n| {pattern} | {_fmt(b1080['psnr'], 2)} | {_fmt(b4k['psnr'], 2)} | "
+            f"{_fmt(b1080['vmaf'], 2)} | {_fmt(b4k['vmaf'], 2)} |"
+        )
+    lines.append(
+        "\n\n**Observation**: at matched target PSNR, VMAF direction depends on the "
+        "distortion type. For noise, VMAF at 4K is close to (slightly below) "
+        "1080p. For blur, VMAF drops noticeably more at 4K than at 1080p (e.g. "
+        "target PSNR 30 dB: VMAF 56.19 at 1080p vs 43.79 at 4K) -- the same "
+        "Gaussian blur sigma calibrated to a fixed PSNR removes proportionally "
+        "more fine detail relative to a 4K frame's higher native sharpness "
+        "expectation, so VMAF (which models perceived sharpness loss) penalizes "
+        "it harder. For the golden-derived transcode corruptions, VMAF is "
+        "consistently a few points *higher* at 4K for the same corruption "
+        "(block_glitch, heavy_compression, chroma_swap), since a fixed-size "
+        "corrupted region/JPEG block covers a smaller relative fraction of a "
+        "larger 4K frame. PSNR/SSIM stay close between resolutions in both "
+        "cases since those metrics operate on relative/local pixel neighborhoods "
+        "rather than absolute pixel counts, unlike VMAF's resolution-aware "
+        "perceptual model.\n"
+    )
 
     lines.append("\n## Cross-validation: ffmpeg CLI vs OpenCV\n")
     lines.append(

@@ -31,10 +31,11 @@ except Exception:  # pragma: no cover - optional dependency
 def run(golden_path: str, outdir: str, with_vmaf: bool, step: float = 0.5) -> None:
     outdir_p = Path(outdir)
     golden = load_image(golden_path)
+    height, width = golden.shape[:2]
 
     save_image(outdir_p / "golden.png", golden)
-    save_image(outdir_p / "black.png", generate_solid_color((0, 0, 0)))
-    save_image(outdir_p / "white.png", generate_solid_color((255, 255, 255)))
+    save_image(outdir_p / "black.png", generate_solid_color((0, 0, 0), width, height))
+    save_image(outdir_p / "white.png", generate_solid_color((255, 255, 255), width, height))
 
     rows = []
     for kind, calibrate in (("noise", calibrate_noise_for_target), ("blur", calibrate_blur_for_target)):
